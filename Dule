@@ -1,0 +1,500 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
+local player = Players.LocalPlayer
+-- character refs
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+local function refreshChar()
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+end
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- CONFIG SYSTEM (FIXED)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local CONFIG_FILE = "DuelsStyleHub_Config.json"
+local function canSave()
+    return (writefile and readfile and isfile)
+end
+local DEFAULT_WALKSPEED = 16
+local DEFAULT_JUMPPOWER = 50
+local DEFAULT_GRAVITY = Workspace.Gravity
+local Config = {
+    SpeedBoost = false,
+    BoostSpeed = 27,
+    SpeedWhileSteal = false,
+    SpeedWhileStealValue = 27,
+    SpinBot = false,
+    SpinSpeed = 50,
+    GravityControl = false,
+    Gravity = Workspace.Gravity,
+    HopPower = DEFAULT_JUMPPOWER,
+    Unwalk = false,
+    Optimizer = false,
+    AntiRagdoll = true,  -- Always on
+    AntiKnockback = true,  -- Always on
+    Protect = false,
+    AutoGrab = false,
+    InfiniteJump = false,  -- Added
+    -- SpamBot removed
+    -- BatAimbot removed
+    -- GalaxyBright removed
+    Keybinds = {
+        SpeedBoost = "V",
+        SpeedWhileSteal = "X",
+        SpinBot = "N",
+        GravityControl = "G",
+        Unwalk = "B",
+        Optimizer = "Z",
+        Protect = "P",
+        AutoGrab = "T",
+        InfiniteJump = "I",  -- Added
+        -- AntiRagdoll removed
+        -- AntiKnockback removed
+        -- SpamBot removed
+        -- BatAimbot removed (was "J")
+        -- GalaxyBright removed (was "H")
+    }
+}
+local function LoadConfig()
+    if not canSave() then
+        warn("[CONFIG] No file functions. Save Config won't persist.")
+        return
+    end
+    if not isfile(CONFIG_FILE) then return end
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(readfile(CONFIG_FILE))
+    end)
+    if ok and type(decoded) == "table" then
+        for k, v in pairs(decoded) do
+            Config[k] = v
+        end
+        -- safety for old configs
+        if type(Config.Keybinds) ~= "table" then
+            Config.Keybinds = {
+                SpeedBoost = "Z",
+                SpinBot = "X",
+                GravityControl = "G",
+                StepSpeed = "V",
+                Unwalk = "B",
+                Optimizer = "N",
+                Protect = "P",
+                AutoGrab = "T",
+                InfiniteJump = "I",
+            }
+        end
+        if type(Config.HopPower) ~= "number" then
+            Config.HopPower = DEFAULT_JUMPPOWER
+        end
+        if type(Config.AutoGrab) ~= "boolean" then
+            Config.AutoGrab = false
+        end
+        if type(Config.InfiniteJump) ~= "boolean" then
+            Config.InfiniteJump = false
+        end
+        warn("[CONFIG] Loaded.")
+    end
+end
+local function SaveConfig()
+    if not canSave() then
+        warn("[CONFIG] Executor doesn't support writefile/readfile.")
+        return
+    end
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(Config)
+    end)
+    if ok then
+        writefile(CONFIG_FILE, encoded)
+        warn("[CONFIG] Saved.")
+    end
+end
+LoadConfig()
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Feature variables
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local speedEnabled = Config.SpeedBoost
+local currentSpeed = Config.BoostSpeed
+local speedWhileStealEnabled = Config.SpeedWhileSteal
+local speedWhileStealValue = Config.SpeedWhileStealValue
+local spinEnabled = Config.SpinBot
+local spinSpeed = Config.SpinSpeed
+local antiEnabled = Config.AntiRagdoll  -- Always true
+local antiConn = nil
+-- Anti-Knockback (Updated to new version)
+local noKnockbackEnabled = Config.AntiKnockback  -- Always true
+local noKbConn = nil
+local lastSafeVelocity = Vector3.new(0, 0, 0)
+local VELOCITY_THRESHOLD = 70 -- tune if needed
+local UPDATE_INTERVAL = 0.016 -- ~60 Hz
+-- Unwalk (no animation)
+local animationsEnabled = true
+local unwalkEnabled = Config.Unwalk
+-- connections
+local speedConn = nil
+local spinConn = nil
+-- optimizer cache
+local optimizerCache = {}
+-- Gravity Control + Hop Power
+local gravityEnabled = Config.GravityControl
+local gravityValue = Config.Gravity
+local hopPowerValue = Config.HopPower or DEFAULT_JUMPPOWER
+-- Hop Power velocity variables
+local hopCooldown = 0.18
+local lastHopTime = 0
+local jumpConn = nil
+-- Protect Mode (AlignPosition version)
+local protectEnabled = Config.Protect
+local protectTarget = nil
+local originalWalkSpeed = nil
+local alignPos = nil
+local alignOri = nil
+local targetAtt = nil
+local followAtt = nil
+local PROTECT_DISTANCE = 0
+local PROTECT_MAX_DISTANCE = 70
+local ALIGN_RESPONSIVENESS = 25
+local MAX_VELOCITY = 55
+-- Brainrot carry detection
+local carryingBrainrot = false
+-- Auto Grab
+local autoGrabEnabled = Config.AutoGrab or false
+_G.InstaPickup = autoGrabEnabled
+-- FOV CONTROL
+local fovEnabled = false
+local currentFOV = 70
+local defaultFOV = 70
+local camera = game:GetService("Workspace").CurrentCamera
+local function setFOV(state)
+    fovEnabled = state
+    if state then
+        camera.FieldOfView = currentFOV
+    else
+        camera.FieldOfView = defaultFOV
+    end
+end
+-- Infinite Jump (new)
+local infJumpEnabled = Config.InfiniteJump
+local infJumpConn = nil
+local infFallConn = nil
+local jumpForce = 50
+local clampFallSpeed = 80
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Helpers (unchanged)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local function getCharacter()
+    local char = player.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildWhichIsA("Humanoid")
+    if not hrp or not hum then return nil end
+    return char, hrp, hum
+end
+local function getMoveDirection()
+    local _, hrp, hum = getCharacter()
+    if not hum or not hrp then return Vector3.zero end
+    local move = hum.MoveDirection
+    if move.Magnitude > 0.01 then
+        return move.Unit
+    end
+    return hrp.CFrame.LookVector.Unit
+end
+local function isCarryingBrainrot()
+    local char = player.Character
+    if not char then return false end
+    local folders = {"Carry","Carried","Carrying","Held","Holding","Item","Grabbed","Loot","Brainrot"}
+    for _, fname in ipairs(folders) do
+        local f = char:FindFirstChild(fname)
+        if f and #f:GetChildren() > 0 then return true end
+    end
+    for _, v in ipairs(char:GetDescendants()) do
+        local n = (v.Name or ""):lower()
+        if n:find("brainrot") or (n:find("brain") and n:find("rot")) or n:find("brain") or n:find("rot") then
+            if v:IsA("Model") or v:IsA("BasePart") then return true end
+        end
+    end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        for _, c in ipairs(hrp:GetChildren()) do
+            if c:IsA("WeldConstraint") or c:IsA("Motor6D") then
+                local p0, p1 = c.Part0, c.Part1
+                if p0 and p1 then
+                    local combo = ((p0.Name or "") .. " " .. (p1.Name or "")):lower()
+                    if combo:find("brain") or combo:find("rot") or combo:find("brainrot") then return true end
+                end
+            end
+        end
+    end
+    return false
+end
+task.spawn(function()
+    while task.wait(0.15) do carryingBrainrot = isCarryingBrainrot() end
+end)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Optimizer (unchanged)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local function cacheObj(obj, prop, value)
+    optimizerCache[obj] = optimizerCache[obj] or {}
+    if optimizerCache[obj][prop] == nil then optimizerCache[obj][prop] = value end
+end
+local function setOptimizer(state)
+    Config.Optimizer = state
+    if state then
+        for _, v in ipairs(Lighting:GetChildren()) do
+            if v:IsA("PostEffect") then cacheObj(v, "Enabled", v.Enabled) v.Enabled = false end
+        end
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Decal") or obj:IsA("Texture") then cacheObj(obj, "Transparency", obj.Transparency) obj.Transparency = 1
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then cacheObj(obj, "Enabled", obj.Enabled) obj.Enabled = false
+            elseif obj:IsA("BasePart") then cacheObj(obj, "Material", obj.Material) obj.Material = Enum.Material.Plastic end
+        end
+    else
+        for obj, props in pairs(optimizerCache) do
+            if obj and obj.Parent then
+                for prop, old in pairs(props) do pcall(function() obj[prop] = old end) end
+            end
+        end
+        optimizerCache = {}
+    end
+end
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Anti Ragdoll (unchanged)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local function setupAntiRagdoll()
+    if antiConn then antiConn:Disconnect() antiConn = nil end
+    if not antiEnabled then return end
+    local _, _, hum = getCharacter()
+    if not hum then return end
+    antiConn = hum.StateChanged:Connect(function(_, new)
+        if not antiEnabled then return end
+        if new == Enum.HumanoidStateType.Ragdoll or new == Enum.HumanoidStateType.FallingDown or new == Enum.HumanoidStateType.Physics then
+            task.defer(function()
+                if hum and hum.Parent and hum.Health > 0 then
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+                end
+            end)
+        end
+    end)
+end
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Anti-Knockback (Updated to new provided version)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local function setupNoKnockback()
+    local char, hrp, hum = getCharacter()
+    if not char or not hrp or not hum then return end
+   
+    if noKbConn then
+        noKbConn:Disconnect()
+        noKbConn = nil
+    end
+   
+    lastSafeVelocity = hrp.Velocity
+   
+    local lastCheck = tick()
+    local lastPosition = hrp.Position
+    noKbConn = RunService.Heartbeat:Connect(function()
+        if not noKnockbackEnabled then return end
+        local now = tick()
+        if now - lastCheck < UPDATE_INTERVAL then return end
+        lastCheck = now
+       
+        local currentVel = hrp.Velocity
+        local currentPos = hrp.Position
+        local positionChange = (currentPos - lastPosition).Magnitude
+        lastPosition = currentPos
+       
+        local horizontalSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
+        local lastHorizontalSpeed = Vector3.new(lastSafeVelocity.X, 0, lastSafeVelocity.Z).Magnitude
+       
+        local isKnockback = false
+       
+        -- Sudden large horizontal velocity change
+        if horizontalSpeed > VELOCITY_THRESHOLD and horizontalSpeed > lastHorizontalSpeed * 4 then
+            isKnockback = true
+        end
+       
+        -- Large vertical velocity (launch / explosion)
+        if math.abs(currentVel.Y) > 150 then
+            isKnockback = true
+        end
+       
+        -- Ragdoll / falling states
+        if hum:GetState() == Enum.HumanoidStateType.Ragdoll or
+           hum:GetState() == Enum.HumanoidStateType.FallingDown then
+            isKnockback = true
+        end
+       
+        -- Teleport / extreme movement detection
+        if positionChange > 10 and horizontalSpeed > 50 then
+            isKnockback = true
+        end
+        if isKnockback then
+            -- Try to recover from ragdoll
+            if hum:GetState() == Enum.HumanoidStateType.Ragdoll or
+               hum:GetState() == Enum.HumanoidStateType.FallingDown then
+                hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                task.wait(0.1)
+            end
+           
+            -- Clear all physics forces and velocities
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.Velocity = Vector3.new(0, 0, 0)
+                    part.RotVelocity = Vector3.new(0, 0, 0)
+                   
+                    for _, force in ipairs(part:GetChildren()) do
+                        if force:IsA("BodyVelocity") or force:IsA("BodyForce") or
+                           force:IsA("BodyAngularVelocity") or force:IsA("BodyGyro") then
+                            force:Destroy()
+                        end
+                    end
+                end
+            end
+           
+            hum.PlatformStand = false
+            hum.AutoRotate = true
+           
+            lastSafeVelocity = Vector3.new(0, 0, 0)
+        else
+            -- Only update safe velocity when character seems stable
+            local stable = hum:GetState() ~= Enum.HumanoidStateType.Freefall and
+                           hum:GetState() ~= Enum.HumanoidStateType.FallingDown and
+                           hum:GetState() ~= Enum.HumanoidStateType.Ragdoll
+                          
+            if stable and horizontalSpeed < VELOCITY_THRESHOLD then
+                lastSafeVelocity = currentVel
+            end
+        end
+    end)
+end
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Improved speed system
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+local SPEED_SMOOTH_FACTOR   = 0.22     -- 0.15 = very smooth/slow accel, 0.35 = snappy
+local MAX_SAFE_EXTRA_SPEED  = 65       -- tune per game
+local USE_WALKSPEED_FALLBACK = false    -- set false if game patches WalkSpeed hard
+
+local speedConnection = nil
+
+local function updateSpeed(dt)
+    local char, hrp, hum = getCharacter()
+    if not char or not hrp or not hum or hum.Health <= 0 then return end
+
+    if not (speedEnabled or speedWhileStealEnabled) then
+        hum.WalkSpeed = DEFAULT_WALKSPEED
+        return
+    end
+
+    local targetSpeed
+    if speedWhileStealEnabled then
+        targetSpeed = speedWhileStealValue
+    elseif speedEnabled then
+        targetSpeed = currentSpeed
+    else
+        targetSpeed = DEFAULT_WALKSPEED
+    end
+
+    targetSpeed = math.clamp(targetSpeed, 16, MAX_SAFE_EXTRA_SPEED)
+
+    -- Option A: prefer WalkSpeed when possible (cleanest & least detectable)
+    if USE_WALKSPEED_FALLBACK then
+        hum.WalkSpeed = targetSpeed
+        return
+    end
+
+    -- Option B: velocity assist when WalkSpeed is locked / capped
+    local move = hum.MoveDirection
+    if move.Magnitude < 0.02 then
+        hum.WalkSpeed = DEFAULT_WALKSPEED
+        return
+    end
+
+    local wishDir = move.Unit
+
+    -- Current horizontal velocity
+    local vel = hrp.AssemblyLinearVelocity
+    local horizVel = Vector3.new(vel.X, 0, vel.Z)
+
+    -- Desired horizontal velocity
+    local targetHoriz = wishDir * targetSpeed
+
+    -- Smoothly interpolate
+    local newHoriz = horizVel:Lerp(targetHoriz, SPEED_SMOOTH_FACTOR)
+
+    -- Keep Y velocity (jumping/falling)
+    hrp.AssemblyLinearVelocity = Vector3.new(newHoriz.X, vel.Y, newHoriz.Z)
+end
+
+local function manageSpeedConn()
+    if speedConnection then
+        speedConnection:Disconnect()
+        speedConnection = nil
+    end
+    local needConn = speedEnabled or speedWhileStealEnabled
+    if needConn then
+        speedConnection = RunService.Heartbeat:Connect(updateSpeed)
+    end
+    local _,_,hum = getCharacter()
+    if hum then hum.WalkSpeed = DEFAULT_WALKSPEED end
+end
+
+local function setSpeed(state)
+    speedEnabled = state
+    Config.SpeedBoost = state
+    manageSpeedConn()
+end
+
+local function setSpeedWhileSteal(state)
+    speedWhileStealEnabled = state
+    Config.SpeedWhileSteal = state
+    manageSpeedConn()
+end
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Spin Bot (unchanged)
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+local SAFE_MAX_SPIN = 200
+local spinAV = nil
+local spinAttachment = nil
+local function cleanupSpin()
+    if spinAV then spinAV:Destroy() spinAV = nil end
+    if spinAttachment then
+        if spinAttachment.Name == "SpaceHubSpinAttachment" then spinAttachment:Destroy() end
+        spinAttachment = nil
+    end
+end
+local function setSpin(state)
+    spinEnabled = state
+    Config.SpinBot = state
+    if spinConn then spinConn:Disconnect() spinConn = nil end
+    if not state then cleanupSpin() return end
+    spinConn = RunService.Heartbeat:Connect(function()
+        if not spinEnabled then return end
+        local _, hrp, hum = getCharacter()
+        if not hrp or not hum or hum.Health <= 0 then return end
+        if not spinAttachment or not spinAttachment.Parent then
+            spinAttachment = hrp:FindFirstChild("SpaceHubSpinAttachment")
+            if not spinAttachment then
+                spinAttachment = Instance.new("Attachment")
+                spinAttachment.Name = "SpaceHubSpinAttachment"
+                spinAttachment.Parent = hrp
+            end
+        end
+        if not spinAV or not spinAV.Parent then
+            spinAV = Instance.new("AngularVelocity")
+            spinAV.Name = "SpaceHubSpinAV"
+            spinAV.Attachment0 = spinAttachment
+            spinAV.MaxTorque = math.huge
+            spinAV.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
+            spinAV.Parent = hrp
+        end
+        local s = math.clamp(spinSpeed, 0, SAFE_MAX_SPIN)
+        local radiansPerSecond = (s / 60) * (2 * math.pi) * 12
+        spinAV.AngularVelocity = Vector3.new(0, radiansPerSecond, 0)
+    end)
+end
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
