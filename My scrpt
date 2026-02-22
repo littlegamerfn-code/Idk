@@ -1,0 +1,215 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+
+local flying = false
+local savedPosition
+local flySpeed = 25
+
+local pulseTimer = 0
+
+local bodyVelocity
+local bodyGyro
+local flyConnection
+
+local marker
+local beam
+local att0
+local att1
+
+--------------------------------------------------
+-- GUI 😈 (KLEIN + SCHWARZ)
+--------------------------------------------------
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0,170,0,140)
+frame.Position = UDim2.new(0.05,0,0.6,0)
+frame.BackgroundColor3 = Color3.fromRGB(20,20,20)
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+Instance.new("UICorner",frame)
+
+--------------------------------------------------
+-- BUTTONS
+--------------------------------------------------
+
+local flyButton = Instance.new("TextButton")
+flyButton.Size = UDim2.new(1,-20,0,40)
+flyButton.Position = UDim2.new(0,10,0,10)
+flyButton.Text = "Fly OFF"
+flyButton.TextScaled = true
+flyButton.Parent = frame
+
+local setButton = Instance.new("TextButton")
+setButton.Size = UDim2.new(1,-20,0,40)
+setButton.Position = UDim2.new(0,10,0,55)
+setButton.Text = "Set Pos"
+setButton.TextScaled = true
+setButton.Parent = frame
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(1,-20,0,30)
+speedBox.Position = UDim2.new(0,10,0,100)
+speedBox.Text = "25"
+speedBox.PlaceholderText = "Speed"
+speedBox.TextScaled = true
+speedBox.Parent = frame
+
+Instance.new("UICorner",speedBox)
+
+--------------------------------------------------
+-- POSITION SET + RED POINT + RED LINE 🔴
+--------------------------------------------------
+
+setButton.MouseButton1Click:Connect(function()
+
+	local char = player.Character
+	if not char then return end
+
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	savedPosition = hrp.Position
+
+	-- Cleanup
+	if marker then marker:Destroy() end
+	if beam then beam:Destroy() end
+	if att0 then att0:Destroy() end
+	if att1 then att1:Destroy() end
+
+	-- Red Circle
+	marker = Instance.new("Part")
+	marker.Shape = Enum.PartType.Cylinder
+	marker.Size = Vector3.new(4.5,0.3,4.5)
+	marker.Material = Enum.Material.Neon
+	marker.Color = Color3.fromRGB(255,0,0)
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.Position = savedPosition - Vector3.new(0,2.5,0)
+	marker.Orientation = Vector3.new(0,0,90)
+	marker.Parent = workspace
+
+	-- Red Beam Line
+	att0 = Instance.new("Attachment", hrp)
+	att1 = Instance.new("Attachment", marker)
+
+	beam = Instance.new("Beam")
+	beam.Attachment0 = att0
+	beam.Attachment1 = att1
+	beam.Width0 = 0.35
+	beam.Width1 = 0.35
+	beam.Color = ColorSequence.new(Color3.fromRGB(255,0,0))
+	beam.LightEmission = 1
+	beam.Parent = hrp
+
+end)
+
+--------------------------------------------------
+-- FLY SYSTEM + AUTO STOP + PULSE 😈
+--------------------------------------------------
+
+local function startFly()
+
+	local char = player.Character or player.CharacterAdded:Wait()
+	local hrp = char:WaitForChild("HumanoidRootPart")
+	local humanoid = char:WaitForChild("Humanoid")
+
+	if bodyVelocity then bodyVelocity:Destroy() end
+	if bodyGyro then bodyGyro:Destroy() end
+
+	bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(9e9,9e9,9e9)
+	bodyVelocity.Parent = hrp
+
+	bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(9e9,9e9,9e9)
+	bodyGyro.Parent = hrp
+
+	if flyConnection then flyConnection:Disconnect() end
+
+	flyConnection = RunService.RenderStepped:Connect(function(dt)
+
+		if not flying then return end
+
+		local inputSpeed = tonumber(speedBox.Text)
+		if inputSpeed then flySpeed = inputSpeed end
+
+		pulseTimer += dt
+
+		-- Pulse Effect 😎
+		local pulseMultiplier = 1
+		if pulseTimer >= 1 then
+			pulseTimer = 0
+			pulseMultiplier = 0.6
+		end
+
+		if savedPosition then
+
+			local target = Vector3.new(
+				savedPosition.X,
+				hrp.Position.Y,
+				savedPosition.Z
+			)
+
+			local distance = (target - hrp.Position).Magnitude
+
+			-- AUTO STOP + FALL 😈
+			if distance < 3 then
+
+				flying = false
+				flyButton.Text = "Fly OFF"
+
+				if bodyVelocity then bodyVelocity:Destroy() end
+				if bodyGyro then bodyGyro:Destroy() end
+
+				return
+			end
+
+			local dir = (target - hrp.Position).Unit
+			bodyVelocity.Velocity = dir * flySpeed * pulseMultiplier
+
+		else
+
+			local moveDirection = humanoid.MoveDirection
+
+			bodyVelocity.Velocity = Vector3.new(
+				moveDirection.X * flySpeed * pulseMultiplier,
+				humanoid.Jump and flySpeed or 0,
+				moveDirection.Z * flySpeed * pulseMultiplier
+			)
+
+		end
+
+		bodyGyro.CFrame = workspace.CurrentCamera.CFrame
+
+	end)
+
+end
+
+--------------------------------------------------
+-- FLY TOGGLE
+--------------------------------------------------
+
+flyButton.MouseButton1Click:Connect(function()
+
+	flying = not flying
+
+	if flying then
+		flyButton.Text = "Fly ON"
+		startFly()
+	else
+		flyButton.Text = "Fly OFF"
+
+		if bodyVelocity then bodyVelocity:Destroy() end
+		if bodyGyro then bodyGyro:Destroy() end
+
+		if flyConnection then flyConnection:Disconnect() end
+	end
+
+end)
